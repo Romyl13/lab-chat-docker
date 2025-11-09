@@ -27,4 +27,4 @@ COPY . .
 # Вона каже: "Запусти uvicorn, візьми 'app' з файлу 'chat', 
 # і слухай на всіх IP-адресах ('0.0.0.0') на порту 8000".
 # '0.0.0.0' - це критично важливо для Docker.
-CMD ["uvicorn", "chat:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn chat:app --host 0.0.0.0 --port $PORT
