@@ -1,0 +1,8 @@
+# Віртуальні середовища
+venv/
+chat/
+*.env
+
+# Кеш Python
+__pycache__/
+*.pyc

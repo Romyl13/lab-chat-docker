@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Лаба 6: Веб-чат</title>
+        <style>
+            /* Трохи стилів, щоб було охайно */
+            body { font-family: sans-serif; margin: 20px; background: #f9f9f9; }
+            #chat-box {
+                width: 90%;
+                height: 400px;
+                border: 1px solid #ccc;
+                background: white;
+                overflow-y: scroll; /* Додає прокрутку, якщо повідомлень багато */
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            #message-form { display: flex; }
+            #message-text { flex-grow: 1; padding: 8px; border: 1px solid #ddd; }
+            button { padding: 8px 15px; background: #007bff; color: white; border: none; }
+        </style>
+    </head>
+    <body>
+        <h1>Мій WebSocket Чат</h1>
+        
+        <div id="chat-box">
+            <div>Ласкаво просимо! Підключення до сервера...</div>
+        </div>
+
+        <form id="message-form">
+            <input type="text" id="message-text" autocomplete="off" placeholder="Напишіть щось..."/>
+            <button>Надіслати</button>
+        </form>
+
+        <script>
+            // --- 1. Отримуємо доступ до HTML елементів ---
+            const chatBox = document.getElementById('chat-box');
+            const messageForm = document.getElementById('message-form');
+            const messageInput = document.getElementById('message-text');
+
+            // --- 2. Створюємо WebSocket з'єднання ---
+            // Це "рація" з боку браузера.
+            // ВАЖЛИВО: адреса 'ws://...' має вказувати на твій сервер 
+            // і на той самий шлях '/ws', який ми вказали у @app.websocket("/ws")
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            // --- 3. Обробник: Що робити, КОЛИ ПРИЙШЛО повідомлення ---
+            // Ця функція спрацює, коли сервер щось надішле (через broadcast)
+            ws.onmessage = function(event) {
+                // Створюємо новий HTML-елемент (простий <div>)
+                const messageElement = document.createElement('div');
+                // Вставляємо в нього текст повідомлення від сервера
+                messageElement.textContent = event.data;
+                // Додаємо цей <div> в нашу "коробку" чату
+                chatBox.appendChild(messageElement);
+                // Автоматично прокручуємо вниз, щоб бачити останнє повідомлення
+                chatBox.scrollTop = chatBox.scrollHeight;
+            };
+
+            // --- 4. Обробник: Що робити, КОЛИ МИ ВІДПРАВЛЯЄМО ---
+            // Ця функція спрацює, коли ти натиснеш кнопку "Надіслати"
+            messageForm.onsubmit = function(event) {
+                // Це дуже важливо!
+                // За замовчуванням, форма при відправці ПЕРЕЗАВАНТАЖУЄ сторінку.
+                // Ця команда каже: "Не перезавантажуй, я сам все зроблю!"
+                event.preventDefault(); 
+
+                // Беремо текст з поля вводу
+                const message = messageInput.value;
+                
+                // Надсилаємо цей текст через "рацію" (WebSocket) на наш сервер
+                ws.send(message);
+                
+                // Очищуємо поле вводу, щоб було зручно писати нове повідомлення
+                messageInput.value = '';
+            };
+        </script>
+    </body>
+</html>
