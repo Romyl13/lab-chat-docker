@@ -41,7 +41,13 @@
             // Це "рація" з боку браузера.
             // ВАЖЛИВО: адреса 'ws://...' має вказувати на твій сервер 
             // і на той самий шлях '/ws', який ми вказали у @app.websocket("/ws")
-            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            // --- 2. Створюємо WebSocket з'єднання ---
+            
+            // Визначаємо протокол: 'wss' (безпечний) для https, 'ws' (звичайний) для http
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+            // Створюємо з'єднання, використовуючи правильний протокол
+            const ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws`);
 
             // --- 3. Обробник: Що робити, КОЛИ ПРИЙШЛО повідомлення ---
             // Ця функція спрацює, коли сервер щось надішле (через broadcast)
