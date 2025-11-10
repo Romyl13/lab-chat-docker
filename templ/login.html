@@ -1,21 +1,108 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Вхід до Чату</title>
     <style>
-        body { font-family: sans-serif; display: grid; place-items: center; min-height: 90vh; background: #f4f4f4; }
-        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 300px; }
-        h1 { text-align: center; color: #333; margin-top: 0; }
+        /* --- 1. Налаштування CSS Змінних (для темної/світлої теми) --- */
+        :root {
+            --bg-color: #f4f4f4;
+            --container-bg: white;
+            --text-color: #333;
+            --border-color: #ccc;
+            --button-bg: #007bff;
+            --button-hover: #0056b3;
+            --shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        body.dark-mode {
+            --bg-color: #1a1a1a;
+            --container-bg: #2b2b2b;
+            --text-color: #f1f1f1;
+            --border-color: #555;
+            --button-bg: #0056b3;
+            --button-hover: #003d80;
+            --shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        /* --- Кінець Змінних --- */
+
+        body {
+            font-family: sans-serif;
+            display: grid;
+            place-items: center;
+            min-height: 90vh;
+            background: var(--bg-color); /* Використовуємо змінну */
+            color: var(--text-color); /* Використовуємо змінну */
+            transition: background 0.3s, color 0.3s;
+            margin: 0;
+            padding: 1rem;
+        }
+        
+        #theme-toggle {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 1.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-color);
+        }
+
+        .container {
+            background: var(--container-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            
+            /* --- ЦЕ АДАПТИВ --- */
+            width: 90%; /* На мобільному буде 90% ширини екрану */
+            max-width: 350px; /* Але не ширше, ніж 350px на ПК */
+        }
+        
+        h1 { text-align: center; margin-top: 0; }
         form { display: flex; flex-direction: column; gap: 10px; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
+        
+        label { font-size: 0.9em; }
+        
+        input {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-color); /* Робимо фон інпутів як фон сторінки */
+            color: var(--text-color);
+        }
+        
+        button {
+            padding: 10px;
+            background: var(--button-bg);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background: var(--button-hover); }
+        
+        #register-btn { background: #555; }
+        #register-btn:hover { background: #333; }
+
         #response-message { margin-top: 15px; text-align: center; font-size: 0.9em; }
-        .error { color: red; }
-        .success { color: green; }
+        .error { color: #ff5c5c; }
+        .success { color: #5cff5c; }
+
+        #sound-btn {
+            margin-top: 20px;
+            background: #28a745;
+        }
+        #sound-btn:hover { background: #1e7e34; }
     </style>
 </head>
 <body>
+
+    <button id="theme-toggle">🌙</button>
+
     <div class="container">
         <h1>Вхід або Реєстрація</h1>
         
@@ -31,10 +118,14 @@
         </form>
         
         <div id="response-message"></div>
+
+        <button type="button" id="sound-btn">Здарова, бандити!</button>
     </div>
 
+    <audio id="my-sound" src="https://www.myinstants.com/media/sounds/zdarova-bandity.mp3" preload="auto"></audio>
+
     <script>
-        // --- 1. Отримуємо доступ до елементів ---
+        // --- 1. Старий код для логіну/реєстрації (нічого не змінилось) ---
         const form = document.getElementById('auth-form');
         const loginBtn = document.getElementById('login-btn');
         const registerBtn = document.getElementById('register-btn');
@@ -42,34 +133,29 @@
         const passwordInput = document.getElementById('password');
         const responseMsg = document.getElementById('response-message');
 
-        // --- 2. Обробник: Реєстрація ---
         registerBtn.onclick = async function(event) {
-            event.preventDefault(); // Зупиняємо стандартну поведінку кнопки
+            // ... (весь твій код 'fetch /register') ...
+            event.preventDefault();
             const username = usernameInput.value;
             const password = passwordInput.value;
 
-            // 'fetch' - це JavaScript спосіб "смикнути" ендпоінт
             const response = await fetch('/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username, password: password })
             });
-
-            const data = await response.json(); // Читаємо відповідь від сервера
-
+            const data = await response.json();
             if (response.ok) {
-                responseMsg.textContent = data.message; // "Користувач ... зареєстрований!"
+                responseMsg.textContent = data.message;
                 responseMsg.className = 'success';
             } else {
-                responseMsg.textContent = data.detail; // "Цей username вже зайнятий"
+                responseMsg.textContent = data.detail;
                 responseMsg.className = 'error';
             }
         };
-
-        // --- 3. Обробник: Вхід (Логін) ---
-        // Ми вішаємо обробник на 'submit' всієї форми
         form.onsubmit = async function(event) {
-            event.preventDefault(); // Запобігаємо перезавантаженню сторінки
+            // ... (весь твій код 'fetch /login' і 'localStorage.setItem') ...
+            event.preventDefault();
             const username = usernameInput.value;
             const password = passwordInput.value;
 
@@ -78,28 +164,45 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username, password: password })
             });
-
-            const data = await response.json(); 
-
+            const data = await response.json();
             if (response.ok) {
-                // УСПІХ! Сервер повернув нам "квиток" (токен)
                 responseMsg.textContent = 'Вхід успішний! Перенаправлення...';
                 responseMsg.className = 'success';
-
-                // ЦЕ НАЙГОЛОВНІШЕ:
-                // Зберігаємо "квиток" у локальному сховищі браузера
                 localStorage.setItem('chat-token', data.access_token);
-
-                // Чекаємо 1 секунду (щоб користувач побачив повідомлення) 
-                // і перекидаємо його на головну сторінку чату
-                setTimeout(() => {
-                    window.location.href = '/'; // Перехід на сторінку чату
-                }, 1000);
-
+                setTimeout(() => { window.location.href = '/'; }, 1000);
             } else {
-                // ПОМИЛКА!
-                responseMsg.textContent = data.detail; // "Неправильний username або пароль"
+                responseMsg.textContent = data.detail;
                 responseMsg.className = 'error';
+            }
+        };
+
+        // --- 2. НОВИЙ код для Звуку ---
+        const soundBtn = document.getElementById('sound-btn');
+        const mySound = document.getElementById('my-sound');
+        soundBtn.onclick = function() {
+            mySound.play(); // Просто програємо звук по кліку
+        };
+
+        // --- 3. НОВИЙ код для Темної Теми ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+
+        // При завантаженні сторінки, перевіряємо чи була тема в 'localStorage'
+        if (localStorage.getItem('chat-theme') === 'dark') {
+            body.classList.add('dark-mode');
+            themeToggle.textContent = '☀️'; // Міняємо іконку
+        }
+
+        themeToggle.onclick = function() {
+            body.classList.toggle('dark-mode'); // Перемикаємо клас
+            
+            // Зберігаємо вибір користувача
+            if (body.classList.contains('dark-mode')) {
+                localStorage.setItem('chat-theme', 'dark');
+                themeToggle.textContent = '☀️';
+            } else {
+                localStorage.setItem('chat-theme', 'light');
+                themeToggle.textContent = '🌙';
             }
         };
     </script>
