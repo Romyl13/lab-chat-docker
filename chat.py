@@ -19,7 +19,7 @@ chat:app - це вказівка запустити об'єкт app з файл�
 
 '''
 
-
+# --- Старі і нові імпорти ---
 from fastapi import FastAPI, WebSocket, Request, Query, Body, HTTPException, status
 # модуль з різними видами відповідей(текст, json, html) витягуємо лише HTML
 from fastapi.responses import HTMLResponse
@@ -34,6 +34,13 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import List
 
+# --- НОВІ ІМПОРТИ ДЛЯ БАЗИ ДАНИХ ---
+import os
+import databases
+import sqlalchemy
+
+
+# ---- Налаштування FastAPI та шаблонів ----
 app = FastAPI()  # прийматиме інструкції для запитів
 # дивиться всі html шаблони щоб зібрати
 templates = Jinja2Templates(directory="templ")
@@ -45,10 +52,61 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Наша "база даних" користувачів, поки що в пам'яті
-fake_users_db = {}
+
+# --- НОВЕ: Налаштування Бази Даних ---
+# Беремо "секретну адресу" з Environment (яку ти додав у Render)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Якщо ми запускаємо локально і не маємо .env, то ставимо заглушку
+if DATABASE_URL is None:
+    print("УВАГА: Не знайдено DATABASE_URL. Використовується тимчасова SQLite база.")
+    DATABASE_URL = "sqlite:///./temp_db.db"
+
+# Створюємо "менеджера" бази даних
+database = databases.Database(DATABASE_URL)
+
+# Описуємо "креслення" наших таблиць
+metadata = sqlalchemy.MetaData()
+
+users_table = sqlalchemy.Table(
+    "users",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("username", sqlalchemy.String, unique=True, index=True),
+    sqlalchemy.Column("hashed_password", sqlalchemy.String),
+)
+
+messages_table = sqlalchemy.Table(
+    "messages",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("username", sqlalchemy.String, index=True),
+    sqlalchemy.Column("message_text", sqlalchemy.String),
+    sqlalchemy.Column("timestamp", sqlalchemy.DateTime,
+                      default=datetime.now(timezone.utc)),
+)
+# --- Кінець налаштування Бази Даних ---
 
 
+# --- Команди "При старті / При вимкненні" сервера ---
+@app.on_event("startup")
+async def startup():
+    # Підключаємось до бази
+    await database.connect()
+    # Створюємо таблиці (якщо їх ще нема)
+    engine = sqlalchemy.create_engine(DATABASE_URL)
+    metadata.create_all(engine)
+    print("База даних підключена і таблиці готові.")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    # Відключаємось від бази
+    await database.disconnect()
+    print("База даних відключена.")
+
+
+# ---- Pydantic Моделі (як і були) ----
 class User(BaseModel):
     username: str
     password: str
@@ -84,8 +142,6 @@ def decode_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
-            return None
         return username
     except JWTError:
         return None  # Токен недійсний
@@ -114,7 +170,7 @@ async def get_chat_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-# ---- Нові ендпоінти для логіну/реєстрації ----
+# ---- Нові ендпоінти для логіну/реєстрації (ОНОВЛЕНО ДЛЯ БАЗИ) ----
 
 @app.get("/login", response_class=HTMLResponse)
 async def get_login_page(request: Request):
@@ -124,32 +180,47 @@ async def get_login_page(request: Request):
 
 @app.post("/register")
 async def register_user(user: User = Body(...)):
-    if user.username in fake_users_db:
+    # Перевіряємо, чи є юзер в БАЗІ ДАНИХ
+    query = users_table.select().where(users_table.c.username == user.username)
+    existing_user = await database.fetch_one(query)
+
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Цей username вже зайнятий"
         )
+
     hashed_password = get_password_hash(user.password)
-    fake_users_db[user.username] = hashed_password
+
+    # Вставляємо юзера в БАЗУ ДАНИХ
+    query = users_table.insert().values(username=user.username,
+                                        hashed_password=hashed_password)
+    await database.execute(query)
+
     return {"message": f"Користувач {user.username} зареєстрований!"}
 
 
 @app.post("/login", response_model=Token)
 async def login_for_access_token(user: User = Body(...)):
-    db_user_hash = fake_users_db.get(user.username)
-    if not db_user_hash or not verify_password(user.password, db_user_hash):
+    # Шукаємо юзера в БАЗІ ДАНИХ
+    query = users_table.select().where(users_table.c.username == user.username)
+    db_user = await database.fetch_one(query)
+
+    if not db_user or not verify_password(user.password, db_user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неправильний username або пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Створюємо токен (як і раніше)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": db_user["username"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-# ---- Кінець нових ендпоінтів ----
+# ---- Кінець нових ендпоіінтів ----
 
 
 @app.websocket("/ws")
@@ -157,7 +228,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     # Тепер ми вимагаємо 'token' при підключенні
     username = decode_token(token)
 
-    if username is None or username not in fake_users_db:
+    # Перевіряємо юзера в БАЗІ ДАНИХ
+    query = users_table.select().where(users_table.c.username == username)
+    db_user = await database.fetch_one(query)
+
+    if username is None or not db_user:
         # Якщо "квиток" (токен) поганий, або юзера нема в нашій базі - відхиляємо
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -166,16 +241,30 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
     active_connections.append(websocket)
 
+    # Відправляємо новому юзеру ОСТАННІ 10 ПОВІДОМЛЕНЬ (Історія!)
+    query = messages_table.select().order_by(
+        messages_table.c.timestamp.desc()).limit(10)
+    history = await database.fetch_all(query)
+    # Перевертаємо, щоб показати в правильному порядку
+    for msg in reversed(history):
+        await websocket.send_text(f"[Історія] {msg['username']}: {msg['message_text']}")
+
     await broadcast(f"INFO: Користувач '{username}' приєднався. Всього: {len(active_connections)}")
 
     try:
         while True:
             data = await websocket.receive_text()
-            # Додаємо ім'я користувача до кожного повідомлення
+
+            # 1. Зберігаємо повідомлення в БАЗУ ДАНИХ
+            query = messages_table.insert().values(username=username, message_text=data)
+            await database.execute(query)
+
+            # 2. Транслюємо всім
             await broadcast(f"{username}: {data}")
 
     except Exception:
         active_connections.remove(websocket)
         await broadcast(f"INFO: Користувач '{username}' вийшов. Залишилось: {len(active_connections)}")
+
 
 # ФІКТИВНА ЗМІНА
