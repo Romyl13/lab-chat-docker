@@ -19,6 +19,7 @@ chat:app - це вказівка запустити об'єкт app з файл�
 
 '''
 
+
 # --- Старі і нові імпорти ---
 from fastapi import FastAPI, WebSocket, Request, Query, Body, HTTPException, status
 # модуль з різними видами відповідей(текст, json, html) витягуємо лише HTML
@@ -32,12 +33,13 @@ from jose.exceptions import JWTError
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
-from typing import List
+from typing import Dict  # <-- Змінено List на Dict
 
 # --- НОВІ ІМПОРТИ ДЛЯ БАЗИ ДАНИХ ---
 import os
 import databases
 import sqlalchemy
+import json  # <-- Додано для JSON-повідомлень
 
 
 # ---- Налаштування FastAPI та шаблонів ----
@@ -149,19 +151,38 @@ def decode_token(token: str):
 # ---- Кінець нових функцій ----
 
 
-# це список в який складатиму всіх, хто зараз підключений до чату для вебсокета
-active_connections: List[WebSocket] = []
+# ---- ОНОВЛЕНА ЛОГІКА ЧАТУ ----
+
+# це СЛОВНИК в який складатиму всіх, хто зараз підключений до чату для вебсокета
+active_connections: Dict[str, WebSocket] = {}
+
+
+def get_active_users_list():
+    """Просто повертає список імен всіх, хто онлайн"""
+    return list(active_connections.keys())
+
+
+async def broadcast_user_list():
+    """Створює і транслює всім оновлений список користувачів"""
+    user_list = get_active_users_list()
+    # Ми відправляємо дані в JSON-форматі
+    # Ми додаємо "тип" повідомлення, щоб JS знав, що це список юзерів
+    payload = json.dumps({"type": "user_list", "users": user_list})
+    # .values() - це всі websocket з'єднання
+    for connection in active_connections.values():
+        await connection.send_text(payload)
 
 
 # асинхронна функція що дає змогу не переривати інший код
 # якщо функція працює довго(типу вона виконується і інший код виконується паралельно
 # щоб не мішати один одному і не чикати один одного)
 # функція бере одне повідомлення і відправляє його всім, хто зараз підключений до чату
-async def broadcast(message: str):
+async def broadcast(message_payload: str):
     # перебираємо все з списку
-    for connection in active_connections:
+    for connection in active_connections.values():  # <-- Змінено на .values()
         # async працює код коли доходить до await і зразу переключається на інший код щоб його виконати але той код де await почне виконуватись коли прийде попередження що блок коду де await виконався
-        await connection.send_text(message)
+        # <-- Змінено на message_payload
+        await connection.send_text(message_payload)
         # бере message і відправляє його по одному конкретному connection (кожному)
 
 
@@ -237,9 +258,15 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    # ---- Нова перевірка ----
+    if username in active_connections:
+        # Якщо юзер з таким ніком вже в чаті, не пускаємо
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Цей юзер вже в чаті")
+        return
+
     # Якщо все добре, пускаємо в чат
     await websocket.accept()
-    active_connections.append(websocket)
+    active_connections[username] = websocket  # <-- Змінено на словник
 
     # Відправляємо новому юзеру ОСТАННІ 10 ПОВІДОМЛЕНЬ (Історія!)
     query = messages_table.select().order_by(
@@ -247,9 +274,19 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     history = await database.fetch_all(query)
     # Перевертаємо, щоб показати в правильному порядку
     for msg in reversed(history):
-        await websocket.send_text(f"[Історія] {msg['username']}: {msg['message_text']}")
+        # Пакуємо в JSON
+        history_payload = json.dumps(
+            {"type": "chat", "message": f"[Історія] {msg['username']}: {msg['message_text']}"})
+        await websocket.send_text(history_payload)
 
-    await broadcast(f"INFO: Користувач '{username}' приєднався. Всього: {len(active_connections)}")
+    # Пакуємо в JSON
+    join_payload = json.dumps(
+        {"type": "chat", "message": f"INFO: Користувач '{username}' приєднався. Всього: {len(active_connections)}"})
+    await broadcast(join_payload)
+
+    # ---- Нова дія ----
+    # Транслюємо всім оновлений список юзерів
+    await broadcast_user_list()
 
     try:
         while True:
@@ -259,12 +296,23 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
             query = messages_table.insert().values(username=username, message_text=data)
             await database.execute(query)
 
-            # 2. Транслюємо всім
-            await broadcast(f"{username}: {data}")
+            # 2. Транслюємо всім (Пакуємо в JSON)
+            chat_payload = json.dumps(
+                {"type": "chat", "message": f"{username}: {data}"})
+            await broadcast(chat_payload)
 
     except Exception:
-        active_connections.remove(websocket)
-        await broadcast(f"INFO: Користувач '{username}' вийшов. Залишилось: {len(active_connections)}")
+        # Юзер відключився
+        del active_connections[username]  # <-- Змінено
+
+        # Пакуємо в JSON
+        leave_payload = json.dumps(
+            {"type": "chat", "message": f"INFO: Користувач '{username}' вийшов. Залишилось: {len(active_connections)}"})
+        await broadcast(leave_payload)
+
+        # ---- Нова дія ----
+        # Транслюємо всім оновлений список юзерів
+        await broadcast_user_list()
 
 
 # ФІКТИВНА ЗМІНА

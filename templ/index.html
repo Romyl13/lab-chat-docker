@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Лаба 6: Веб-чат</title>
     <style>
-        /* --- 2. Налаштування CSS Змінних (для темної/світлої теми) --- */
         :root {
             --bg-color: #f9f9f9;
             --chat-bg: white;
+            --sidebar-bg: #f1f1f1;
             --text-color: #333;
             --border-color: #ccc;
             --button-bg: #007bff;
@@ -22,6 +22,7 @@
         body.dark-mode {
             --bg-color: #1a1a1a;
             --chat-bg: #2b2b2b;
+            --sidebar-bg: #222;
             --text-color: #f1f1f1;
             --border-color: #555;
             --button-bg: #0056b3;
@@ -31,41 +32,88 @@
             --info-text: #aaa;
             --history-text: #58a6ff;
         }
-        /* --- Кінець Змінних --- */
 
         body {
             font-family: sans-serif;
             margin: 0;
-            padding: 1rem;
+            padding: 0; /* Прибираємо відступи тіла */
             background: var(--bg-color);
             color: var(--text-color);
             transition: background 0.3s, color 0.3s;
+            display: flex; /* Головний flex-контейнер */
+            height: 100vh; /* На всю висоту екрану */
+            overflow: hidden; /* Забороняємо прокрутку тіла */
         }
 
-        /* --- 3. Адаптивний контейнер для чату --- */
-        .chat-container {
-            width: 95%; /* На мобільному 95% ширини */
-            max-width: 800px; /* На ПК не ширше 800px */
-            margin: 0 auto; /* Центруємо */
+        /* --- 1. НОВЕ: Бічна панель (Сайдбар) --- */
+        #user-sidebar {
+            width: 250px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 1rem;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            transition: margin-left 0.3s ease;
+        }
+        
+        #user-sidebar h2 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        #user-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto; /* Прокрутка, якщо юзерів багато */
+        }
+        
+        #user-list li {
+            padding: 5px 0;
+        }
+        
+        /* Кнопка "Сховати/Показати" сайдбар */
+        #toggle-sidebar {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            font-size: 1.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-color);
+            z-index: 1001; /* Поверх усього */
+        }
+        
+        /* Стан "Сховано" */
+        body.sidebar-hidden #user-sidebar {
+            margin-left: -250px; /* Ховаємо за край екрану */
+        }
+        
+        /* --- 2. Контейнер чату (ОНОВЛЕНО) --- */
+        .chat-container {
+            flex-grow: 1; /* Займає весь залишок місця */
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* На всю висоту */
+            box-sizing: border-box;
         }
 
         .chat-header {
             display: flex;
-            justify-content: space-between; /* Розносимо елементи по боках */
+            justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap; /* Дозволяємо перенос на мобільному */
-            gap: 10px; /* Відступ між елементами */
+            flex-wrap: wrap;
+            gap: 10px;
             margin-bottom: 10px;
+            padding-left: 40px; /* Відступ для кнопки "бургера" */
         }
         
         h1 { margin: 0; }
-
-        .header-buttons {
-            display: flex;
-            gap: 10px;
-        }
+        .header-buttons { display: flex; gap: 10px; }
 
         #theme-toggle {
             font-size: 1.5rem;
@@ -75,51 +123,72 @@
             color: var(--text-color);
         }
 
-        button {
-            padding: 8px 15px;
-            border: none;
-            border-radius: 4px;
-            color: white;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
+        button { /* Стилі для кнопок (без змін) */ }
+        
         #chat-box {
-            width: 100%; /* Тепер 100% від батьківського .chat-container */
-            height: 400px;
+            flex-grow: 1; /* Займає весь вільний простір по висоті */
             border: 1px solid var(--border-color);
             background: var(--chat-bg);
             overflow-y: scroll;
             padding: 10px;
             margin-bottom: 10px;
-            box-sizing: border-box; /* Важливо для правильних 100% */
+            box-sizing: border-box;
         }
         
-        /* Стилі для повідомлень */
-        .msg-info { font-style: italic; color: var(--info-text); }
-        .msg-history { color: var(--history-text); }
+        .msg-info, .msg-history { /* ... (стилі повідомлень без змін) ... */ }
         
         #message-form { display: flex; }
+        #message-text { flex-grow: 1; /* ... (інші стилі без змін) ... */ }
         
-        #message-text {
-            flex-grow: 1;
-            padding: 8px;
-            border: 1px solid var(--border-color);
-            background: var(--chat-bg);
-            color: var(--text-color);
+        /* --- 3. Адаптив (ОНОВЛЕНО) --- */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column; /* На мобільному все стає вертикально */
+            }
+            
+            #user-sidebar {
+                width: 100%; /* Сайдбар на всю ширину */
+                height: 200px; /* Але фіксованої висоти */
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                transition: margin-top 0.3s ease; /* Анімація по вертикалі */
+            }
+
+            /* Стан "Сховано" на мобільному */
+            body.sidebar-hidden #user-sidebar {
+                margin-left: 0; /* Скидаємо анімацію по горизонталі */
+                margin-top: -200px; /* Ховаємо за верхній край */
+            }
+
+            .chat-container {
+                height: auto; /* Висота контейнера чату автоматична */
+            }
+            
+            .chat-header {
+                padding-left: 0; /* Прибираємо відступ */
+                justify-content: center; /* Центруємо header */
+            }
+            
+            #toggle-sidebar {
+                /* Переміщуємо кнопку в кут контейнера чату */
+                position: relative;
+                top: 0;
+                left: 0;
+                align-self: flex-start;
+            }
         }
-        
-        #message-form button { background: var(--button-bg); }
-        #message-form button:hover { background: var(--button-hover); }
-        
-        #logout-btn { background: var(--logout-bg); }
-        #logout-btn:hover { background: var(--logout-hover); }
-        
-        #sound-btn { background: #28a745; }
-        #sound-btn:hover { background: #1e7e34; }
+
     </style>
 </head>
 <body>
+
+    <button id="toggle-sidebar">☰</button>
+
+    <aside id="user-sidebar">
+        <h2>Онлайн: <span id="user-count">0</span></h2>
+        <ul id="user-list">
+            </ul>
+    </aside>
 
     <div class="chat-container">
         
@@ -146,45 +215,91 @@
 
     <script>
         // --- 1. КРИТИЧНИЙ код чату (Перевірка токену) ---
-        // Цей код не можна міняти!
         const token = localStorage.getItem('chat-token');
         if (!token) {
             alert("Ви не авторизовані. Будь ласка, увійдіть.");
             window.location.href = '/login';
         } else {
             
-            // --- 2. Старий код чату (Знаходимо елементи) ---
+            // --- 2. Знаходимо елементи (старі + НОВІ) ---
             const chatBox = document.getElementById('chat-box');
             const messageForm = document.getElementById('message-form');
             const messageInput = document.getElementById('message-text');
             const logoutBtn = document.getElementById('logout-btn');
+            // НОВІ ЕЛЕМЕНТИ
+            const userList = document.getElementById('user-list');
+            const userCount = document.getElementById('user-count');
+            const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+            const body = document.body; // Вже було для теми, тепер і для сайдбару
 
-            // --- 3. Старий код чату (Підключення WebSocket) ---
+            // --- 3. Підключення WebSocket (без змін) ---
             const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
             const ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws?token=${token}`);
 
-            // --- 4. Старий код чату (Обробники) ---
+            // --- 4. Обробник: Що робити, КОЛИ ПРИЙШЛО повідомлення (КРИТИЧНО ОНОВЛЕНО) ---
             ws.onmessage = function(event) {
-                const messageElement = document.createElement('div');
-                messageElement.textContent = event.data;
+                // Тепер ми очікуємо JSON, а не просто текст
+                const data = JSON.parse(event.data);
 
-                // Оновлена логіка для красивих стилів
-                if (event.data.startsWith('INFO:')) {
-                    messageElement.className = 'msg-info';
-                } else if (event.data.startsWith('[Історія]')) {
-                    messageElement.className = 'msg-history';
+                // Дивимось, ЯКИЙ ТИП повідомлення прийшов
+                if (data.type === 'chat') {
+                    // --- Це звичайне повідомлення чату ---
+                    const messageElement = document.createElement('div');
+                    messageElement.textContent = data.message; // Беремо текст з data.message
+
+                    if (data.message.startsWith('INFO:')) {
+                        messageElement.className = 'msg-info';
+                    } else if (data.message.startsWith('[Історія]')) {
+                        messageElement.className = 'msg-history';
+                    }
+                    
+                    chatBox.appendChild(messageElement);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+
+                } else if (data.type === 'user_list') {
+                    // --- Це оновлення списку користувачів ---
+                    updateUserList(data.users);
                 }
-                
-                chatBox.appendChild(messageElement);
-                chatBox.scrollTop = chatBox.scrollHeight;
             };
 
+            // --- 5. НОВА Функція: Оновлення списку юзерів ---
+            function updateUserList(users) {
+                userList.innerHTML = ''; // Повністю очищуємо старий список
+                userCount.textContent = users.length; // Оновлюємо лічильник
+
+                users.forEach(user => {
+                    const li = document.createElement('li');
+                    li.textContent = user;
+                    userList.appendChild(li);
+                });
+            }
+
+            // --- 6. Обробники (Безпека, Форма, Вихід) (без змін) ---
+            ws.onerror = function() { /* ... (код без змін) ... */ };
+            messageForm.onsubmit = function(event) { /* ... (код без змін) ... */ };
+            logoutBtn.onclick = function() { /* ... (код без змін) ... */ };
+            
+            // --- 7. Обробники (Звук, Тема) (без змін) ---
+            const soundBtn = document.getElementById('sound-btn');
+            const mySound = document.getElementById('my-sound');
+            soundBtn.onclick = function() { mySound.play(); };
+            
+            const themeToggle = document.getElementById('theme-toggle');
+            if (localStorage.getItem('chat-theme') === 'dark') { /* ... (код без змін) ... */ }
+            themeToggle.onclick = function() { /* ... (код без змін) ... */ };
+
+            // --- 8. НОВИЙ Обробник: Кнопка "Сховати/Показати" сайдбар ---
+            toggleSidebarBtn.onclick = function() {
+                body.classList.toggle('sidebar-hidden');
+            };
+            
+            // --- Копіюємо старий код (щоб JS не лаявся) ---
+            // Це потрібно, бо ми винесли ці функції в нові обробники
             ws.onerror = function() {
                 alert("Помилка підключення. Можливо, ваш токен застарів. Спробуйте увійти знову.");
                 localStorage.removeItem('chat-token');
                 window.location.href = '/login';
             };
-
             messageForm.onsubmit = function(event) {
                 event.preventDefault(); 
                 const message = messageInput.value;
@@ -193,33 +308,17 @@
                     messageInput.value = '';
                 }
             };
-
             logoutBtn.onclick = function() {
                 localStorage.removeItem('chat-token');
                 alert('Ви вийшли з системи.');
                 window.location.href = '/login';
             };
-
-            // --- 5. НОВИЙ код для Звуку ---
-            const soundBtn = document.getElementById('sound-btn');
-            const mySound = document.getElementById('my-sound');
-            soundBtn.onclick = function() {
-                mySound.play();
-            };
-
-            // --- 6. НОВИЙ код для Темної Теми ---
-            const themeToggle = document.getElementById('theme-toggle');
-            const body = document.body;
-
-            // Перевіряємо localStorage при завантаженні
             if (localStorage.getItem('chat-theme') === 'dark') {
                 body.classList.add('dark-mode');
                 themeToggle.textContent = '☀️';
             }
-
             themeToggle.onclick = function() {
                 body.classList.toggle('dark-mode');
-                
                 if (body.classList.contains('dark-mode')) {
                     localStorage.setItem('chat-theme', 'dark');
                     themeToggle.textContent = '☀️';
