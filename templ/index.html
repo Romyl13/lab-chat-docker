@@ -3,27 +3,29 @@
     <head>
         <title>Лаба 6: Веб-чат</title>
         <style>
-            /* Трохи стилів, щоб було охайно */
+            /* Стилі залишаються ті самі, що й були */
             body { font-family: sans-serif; margin: 20px; background: #f9f9f9; }
             #chat-box {
                 width: 90%;
                 height: 400px;
                 border: 1px solid #ccc;
                 background: white;
-                overflow-y: scroll; /* Додає прокрутку, якщо повідомлень багато */
+                overflow-y: scroll; 
                 padding: 10px;
                 margin-bottom: 10px;
             }
             #message-form { display: flex; }
             #message-text { flex-grow: 1; padding: 8px; border: 1px solid #ddd; }
             button { padding: 8px 15px; background: #007bff; color: white; border: none; }
+            #logout-btn { background: #dc3545; cursor: pointer; margin-left: 10px; }
         </style>
     </head>
     <body>
         <h1>Мій WebSocket Чат</h1>
+        <button id="logout-btn">Вийти</button>
         
         <div id="chat-box">
-            <div>Ласкаво просимо! Підключення до сервера...</div>
+            <div>Підключення до сервера...</div>
         </div>
 
         <form id="message-form">
@@ -32,53 +34,73 @@
         </form>
 
         <script>
-            // --- 1. Отримуємо доступ до HTML елементів ---
-            const chatBox = document.getElementById('chat-box');
-            const messageForm = document.getElementById('message-form');
-            const messageInput = document.getElementById('message-text');
+            // --- 1. Перевірка "квитка" (токену) ---
+            // Дістаємо "квиток" з кишені (localStorage)
+            const token = localStorage.getItem('chat-token');
 
-            // --- 2. Створюємо WebSocket з'єднання ---
-            // Це "рація" з боку браузера.
-            // ВАЖЛИВО: адреса 'ws://...' має вказувати на твій сервер 
-            // і на той самий шлях '/ws', який ми вказали у @app.websocket("/ws")
-            // --- 2. Створюємо WebSocket з'єднання ---
-            
-            // Визначаємо протокол: 'wss' (безпечний) для https, 'ws' (звичайний) для http
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-
-            // Створюємо з'єднання, використовуючи правильний протокол
-            const ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws`);
-
-            // --- 3. Обробник: Що робити, КОЛИ ПРИЙШЛО повідомлення ---
-            // Ця функція спрацює, коли сервер щось надішле (через broadcast)
-            ws.onmessage = function(event) {
-                // Створюємо новий HTML-елемент (простий <div>)
-                const messageElement = document.createElement('div');
-                // Вставляємо в нього текст повідомлення від сервера
-                messageElement.textContent = event.data;
-                // Додаємо цей <div> в нашу "коробку" чату
-                chatBox.appendChild(messageElement);
-                // Автоматично прокручуємо вниз, щоб бачити останнє повідомлення
-                chatBox.scrollTop = chatBox.scrollHeight;
-            };
-
-            // --- 4. Обробник: Що робити, КОЛИ МИ ВІДПРАВЛЯЄМО ---
-            // Ця функція спрацює, коли ти натиснеш кнопку "Надіслати"
-            messageForm.onsubmit = function(event) {
-                // Це дуже важливо!
-                // За замовчуванням, форма при відправці ПЕРЕЗАВАНТАЖУЄ сторінку.
-                // Ця команда каже: "Не перезавантажуй, я сам все зроблю!"
-                event.preventDefault(); 
-
-                // Беремо текст з поля вводу
-                const message = messageInput.value;
+            if (!token) {
+                // ЯКЩО "КВИТКА" НЕМАЄ:
+                // Негайно перекидаємо користувача на сторінку логіну
+                alert("Ви не авторизовані. Будь ласка, увійдіть.");
+                window.location.href = '/login';
+            } else {
+                // ЯКЩО "КВИТОК" Є:
                 
-                // Надсилаємо цей текст через "рацію" (WebSocket) на наш сервер
-                ws.send(message);
+                // --- 2. Отримуємо доступ до HTML елементів ---
+                const chatBox = document.getElementById('chat-box');
+                const messageForm = document.getElementById('message-form');
+                const messageInput = document.getElementById('message-text');
+                const logoutBtn = document.getElementById('logout-btn');
+
+                // --- 3. Створюємо WebSocket з'єднання ---
                 
-                // Очищуємо поле вводу, щоб було зручно писати нове повідомлення
-                messageInput.value = '';
-            };
+                // Визначаємо протокол (для Render)
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+                // ЦЕ НАЙГОЛОВНІШЕ ОНОВЛЕННЯ:
+                // Ми "прикріплюємо" наш "квиток" (токен) до адреси підключення.
+                // Сервер у 'chat.py' (@app.websocket) його там "спіймає".
+                const ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws?token=${token}`);
+
+                // --- 4. Обробник: Що робити, КОЛИ ПРИЙШЛО повідомлення ---
+                ws.onmessage = function(event) {
+                    const messageElement = document.createElement('div');
+                    messageElement.textContent = event.data;
+
+                    // Робимо системні повідомлення курсивом
+                    if (event.data.startsWith('INFO:')) {
+                        messageElement.style.fontStyle = 'italic';
+                        messageElement.style.color = '#666';
+                    }
+                    
+                    chatBox.appendChild(messageElement);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                };
+
+                // Обробник помилки (напр. якщо токен "протух")
+                ws.onerror = function() {
+                    alert("Помилка підключення. Можливо, ваш токен застарів. Спробуйте увійти знову.");
+                    localStorage.removeItem('chat-token'); // Видаляємо поганий квиток
+                    window.location.href = '/login';
+                };
+
+                // --- 5. Обробник: Що робити, КОЛИ МИ ВІДПРАВЛЯЄМО ---
+                messageForm.onsubmit = function(event) {
+                    event.preventDefault(); 
+                    const message = messageInput.value;
+                    if (message.trim() !== "") { // Не надсилаємо порожні повідомлення
+                        ws.send(message);
+                        messageInput.value = '';
+                    }
+                };
+
+                // --- 6. Обробник: Вихід ---
+                logoutBtn.onclick = function() {
+                    localStorage.removeItem('chat-token'); // Викидаємо "квиток"
+                    alert('Ви вийшли з системи.');
+                    window.location.href = '/login'; // Повертаємось на сторінку логіну
+                };
+            }
         </script>
     </body>
 </html>
