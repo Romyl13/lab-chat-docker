@@ -177,3 +177,5 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     except Exception:
         active_connections.remove(websocket)
         await broadcast(f"INFO: Користувач '{username}' вийшов. Залишилось: {len(active_connections)}")
+
+# ФІКТИВНА ЗМІНА
