@@ -27,8 +27,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 # ---- Нові імпорти для верифікації ----
-import jwt
-from jwt.exceptions import InvalidTokenError
+from jose import jwt
+from jose.exceptions import JWTError
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
@@ -87,8 +87,8 @@ def decode_token(token: str):
         if username is None:
             return None
         return username
-    except InvalidTokenError:
-        return None
+    except JWTError:
+        return None  # Токен недійсний
 
 # ---- Кінець нових функцій ----
 
